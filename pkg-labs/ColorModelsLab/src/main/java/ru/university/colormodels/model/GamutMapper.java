@@ -41,7 +41,7 @@ public final class GamutMapper {
                 mapped[i] = clamp(mapped[i], 0.0, 255.0);
             }
         }
-        return new ConversionOutcome(mapped, rawRgb, outOfGamut, strategy);
+        return new ConversionOutcome(mapped, outOfGamut);
     }
 
     private static double clamp(double value, double min, double max) {

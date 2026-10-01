@@ -1,7 +1,6 @@
 package ru.university.colormodels.model;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,7 +17,7 @@ class ColorConverterTest {
         double[] red = {255.0, 0.0, 0.0};
 
         assertArrayEquals(new double[] {41.24, 21.26, 1.93},
-                converter.fromRgb(ColorModelType.XYZ, red, CmykAlgorithm.GCR), 0.03);
+                converter.rgbToXyz(red), 0.03);
         assertArrayEquals(new double[] {53.24, 80.09, 67.20},
                 converter.fromRgb(ColorModelType.LAB, red, CmykAlgorithm.GCR), 0.08);
         assertArrayEquals(new double[] {0.0, 100.0, 100.0, 0.0},
@@ -35,22 +34,21 @@ class ColorConverterTest {
         for (Illuminant illuminant : Illuminant.values()) {
             converter.setIlluminant(illuminant);
             assertArrayEquals(illuminant.referenceWhite(),
-                    converter.fromRgb(ColorModelType.XYZ, white, CmykAlgorithm.GCR), 1e-8);
+                    converter.rgbToXyz(white), 1e-8);
             assertArrayEquals(new double[] {100.0, 0.0, 0.0},
                     converter.fromRgb(ColorModelType.LAB, white, CmykAlgorithm.GCR), 1e-8);
         }
     }
 
     @Test
-    void matrixChangesWithIlluminant() {
+    void changingIlluminantChangesRgbToXyzConversion() {
         ColorConverter converter = new ColorConverter(Illuminant.D65);
-        long revision = converter.getMatrixRevision();
-        double coefficient = converter.getRgbToXyzMatrixValue(0, 0);
+        double[] red = {255.0, 0.0, 0.0};
+        double xForD65 = converter.rgbToXyz(red)[0];
 
         converter.setIlluminant(Illuminant.D50);
 
-        assertEquals(revision + 1, converter.getMatrixRevision());
-        assertNotEquals(coefficient, converter.getRgbToXyzMatrixValue(0, 0), 1e-4);
+        assertNotEquals(xForD65, converter.rgbToXyz(red)[0], 1e-4);
     }
 
     @Test
@@ -59,51 +57,30 @@ class ColorConverterTest {
 
         for (Illuminant illuminant : Illuminant.values()) {
             ColorConverter converter = new ColorConverter(illuminant);
-            for (ColorModelType model : new ColorModelType[] {
-                    ColorModelType.XYZ, ColorModelType.LAB}) {
-                double[] values = converter.fromRgb(model, rgb, CmykAlgorithm.GCR);
-                ConversionOutcome outcome = converter.toRgb(
-                        model, values, CmykAlgorithm.GCR, GamutStrategy.CLIPPING);
-                assertArrayEquals(rgb, outcome.rgb(), 1e-6);
-                assertFalse(outcome.outOfGamut());
-            }
+            double[] xyz = converter.rgbToXyz(rgb);
+            assertArrayEquals(rgb, converter.xyzToRgbRaw(xyz), 1e-6);
+
+            double[] lab = converter.fromRgb(
+                    ColorModelType.LAB, rgb, CmykAlgorithm.GCR);
+            ConversionOutcome outcome = converter.toRgb(
+                    ColorModelType.LAB, lab, GamutStrategy.CLIPPING);
+            assertArrayEquals(rgb, outcome.rgb(), 1e-6);
+            assertFalse(outcome.outOfGamut());
         }
     }
 
     @Test
-    void xyzAndLabStayExactOutsideRgbGamut() {
+    void labStaysExactOutsideRgbGamut() {
         ColorConverter converter = new ColorConverter(Illuminant.D65);
         ColorController controller = new ColorController(converter);
-        double[] xyz = {0.0, 0.0, 5.0};
+        double[] lab = {50.0, 127.0, -128.0};
 
-        controller.updateFrom(ColorModelType.XYZ, xyz);
-        assertArrayEquals(xyz, controller.valuesFor(ColorModelType.XYZ), 1e-12);
-        assertArrayEquals(converter.xyzToLab(xyz),
-                controller.valuesFor(ColorModelType.LAB), 1e-10);
+        controller.updateFrom(ColorModelType.LAB, lab);
+        assertArrayEquals(lab, controller.valuesFor(ColorModelType.LAB), 1e-12);
         assertTrue(controller.hasWarning());
 
         controller.setGamutStrategy(GamutStrategy.SCALING);
-        assertArrayEquals(xyz, controller.valuesFor(ColorModelType.XYZ), 1e-12);
-        assertArrayEquals(converter.xyzToLab(xyz),
-                controller.valuesFor(ColorModelType.LAB), 1e-10);
-    }
-
-    @Test
-    void hsvAndHlsConvertBackToRgb() {
-        ColorConverter converter = new ColorConverter(Illuminant.D65);
-        double[] rgb = {12.0, 34.0, 56.0};
-
-        assertArrayEquals(new double[] {210.0, 78.5714286, 21.9607843},
-                converter.fromRgb(ColorModelType.HSV, rgb, CmykAlgorithm.GCR), 1e-6);
-        assertArrayEquals(new double[] {210.0, 13.3333333, 64.7058824},
-                converter.fromRgb(ColorModelType.HLS, rgb, CmykAlgorithm.GCR), 1e-6);
-
-        for (ColorModelType model : new ColorModelType[] {
-                ColorModelType.HSV, ColorModelType.HLS}) {
-            double[] values = converter.fromRgb(model, rgb, CmykAlgorithm.GCR);
-            assertArrayEquals(rgb, converter.toRgb(
-                    model, values, CmykAlgorithm.GCR, GamutStrategy.CLIPPING).rgb(), 1e-7);
-        }
+        assertArrayEquals(lab, controller.valuesFor(ColorModelType.LAB), 1e-12);
     }
 
     @Test
@@ -128,7 +105,7 @@ class ColorConverterTest {
         double[] black = {0.0, 0.0, 0.0};
 
         assertArrayEquals(new double[] {0.0, 0.0, 0.0},
-                converter.fromRgb(ColorModelType.XYZ, black, CmykAlgorithm.GCR), 1e-12);
+                converter.rgbToXyz(black), 1e-12);
         assertArrayEquals(new double[] {0.0, 0.0, 0.0},
                 converter.fromRgb(ColorModelType.LAB, black, CmykAlgorithm.GCR), 1e-12);
         assertArrayEquals(new double[] {0.0, 0.0, 0.0, 100.0},

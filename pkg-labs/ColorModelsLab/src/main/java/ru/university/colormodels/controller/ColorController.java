@@ -1,7 +1,6 @@
 package ru.university.colormodels.controller;
 
 import java.awt.Color;
-import java.util.Locale;
 
 import ru.university.colormodels.model.CmykAlgorithm;
 import ru.university.colormodels.model.ColorConverter;
@@ -17,7 +16,6 @@ public final class ColorController {
     private final ColorConverter converter;
     private double[] rgb = {52.0, 132.0, 214.0};
     private double[] xyz;
-    private Illuminant illuminant = Illuminant.D65;
     private CmykAlgorithm cmykAlgorithm = CmykAlgorithm.GCR;
     private GamutStrategy gamutStrategy = GamutStrategy.CLIPPING;
     private ColorModelType lastSource;
@@ -37,16 +35,12 @@ public final class ColorController {
 
     public void updateFrom(ColorModelType source, double[] values) {
         ConversionOutcome outcome;
-        if (source == ColorModelType.XYZ) {
-            xyz = values.clone();
-            outcome = GamutMapper.map(
-                    converter.xyzToRgbRaw(xyz), gamutStrategy);
-        } else if (source == ColorModelType.LAB) {
+        if (source == ColorModelType.LAB) {
             xyz = converter.labToXyz(values);
             outcome = GamutMapper.map(
                     converter.xyzToRgbRaw(xyz), gamutStrategy);
         } else {
-            outcome = converter.toRgb(source, values, cmykAlgorithm, gamutStrategy);
+            outcome = converter.toRgb(source, values, gamutStrategy);
             xyz = converter.rgbToXyz(outcome.rgb());
         }
         rgb = outcome.rgb();
@@ -70,9 +64,6 @@ public final class ColorController {
         if (model == lastSource && lastSourceValues != null) {
             return lastSourceValues.clone();
         }
-        if (model == ColorModelType.XYZ) {
-            return xyz.clone();
-        }
         if (model == ColorModelType.LAB) {
             return converter.xyzToLab(xyz);
         }
@@ -82,7 +73,7 @@ public final class ColorController {
     /** Цвет одной точки градиента; состояние приложения при этом не меняется. */
     public Color preview(ColorModelType model, double[] values) {
         ConversionOutcome outcome = converter.toRgb(
-                model, values, cmykAlgorithm, gamutStrategy);
+                model, values, gamutStrategy);
         return toAwtColor(outcome.rgb());
     }
 
@@ -90,17 +81,10 @@ public final class ColorController {
         return toAwtColor(rgb);
     }
 
-    public String hexColor() {
-        Color color = displayColor();
-        return String.format(Locale.ROOT, "#%02X%02X%02X",
-                color.getRed(), color.getGreen(), color.getBlue());
-    }
-
     public void setIlluminant(Illuminant illuminant) {
-        if (this.illuminant == illuminant) {
+        if (converter.getIlluminant() == illuminant) {
             return;
         }
-        this.illuminant = illuminant;
         converter.setIlluminant(illuminant);
         xyz = converter.rgbToXyz(rgb);
         forgetSource();
@@ -125,8 +109,7 @@ public final class ColorController {
             return;
         }
         this.gamutStrategy = strategy;
-        if ((lastSource == ColorModelType.XYZ || lastSource == ColorModelType.LAB)
-                && lastSourceValues != null) {
+        if (lastSource == ColorModelType.LAB && lastSourceValues != null) {
             ConversionOutcome outcome = GamutMapper.map(
                     converter.xyzToRgbRaw(xyz), gamutStrategy);
             rgb = outcome.rgb();
@@ -138,16 +121,8 @@ public final class ColorController {
         refreshView();
     }
 
-    /** Вызывается при замене набора видимых моделей. Сам цвет не меняется. */
-    public void modelSelectionChanged() {
-        forgetSource();
-        status = "Выбраны три цветовые модели; цвет сохранён.";
-        warning = false;
-        refreshView();
-    }
-
     public Illuminant getIlluminant() {
-        return illuminant;
+        return converter.getIlluminant();
     }
 
     public CmykAlgorithm getCmykAlgorithm() {
@@ -174,7 +149,7 @@ public final class ColorController {
     private void setOutcomeStatus(ConversionOutcome outcome) {
         warning = outcome.outOfGamut();
         if (warning) {
-            status = outcome.strategy() == GamutStrategy.CLIPPING
+            status = gamutStrategy == GamutStrategy.CLIPPING
                     ? "Цвет вышел за RGB 0…255: применено обрезание."
                     : "Цвет вышел за RGB 0…255: применено масштабирование.";
         } else {

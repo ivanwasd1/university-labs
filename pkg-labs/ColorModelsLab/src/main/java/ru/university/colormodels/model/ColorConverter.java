@@ -1,7 +1,5 @@
 package ru.university.colormodels.model;
 
-import java.util.Arrays;
-
 /** Преобразования между цветовыми моделями. */
 public final class ColorConverter {
     private static final double[][] SRGB_PRIMARIES = {
@@ -15,7 +13,6 @@ public final class ColorConverter {
     private Illuminant illuminant;
     private Matrix3 rgbToXyzMatrix;
     private Matrix3 xyzToRgbMatrix;
-    private long matrixRevision;
 
     public ColorConverter(Illuminant illuminant) {
         setIlluminant(illuminant);
@@ -33,15 +30,6 @@ public final class ColorConverter {
         this.illuminant = illuminant;
         this.rgbToXyzMatrix = buildRgbToXyzMatrix(illuminant);
         this.xyzToRgbMatrix = rgbToXyzMatrix.inverse();
-        matrixRevision++;
-    }
-
-    public long getMatrixRevision() {
-        return matrixRevision;
-    }
-
-    public double getRgbToXyzMatrixValue(int row, int column) {
-        return rgbToXyzMatrix.get(row, column);
     }
 
     public double[] fromRgb(ColorModelType target, double[] rgb, CmykAlgorithm cmykAlgorithm) {
@@ -54,9 +42,6 @@ public final class ColorConverter {
         return switch (target) {
             case RGB -> safeRgb;
             case CMYK -> rgbToCmyk(safeRgb, cmykAlgorithm);
-            case HSV -> rgbToHsv(safeRgb);
-            case HLS -> rgbToHls(safeRgb);
-            case XYZ -> rgbToXyz(safeRgb);
             case LAB -> xyzToLab(rgbToXyz(safeRgb));
         };
     }
@@ -64,15 +49,11 @@ public final class ColorConverter {
     public ConversionOutcome toRgb(
             ColorModelType source,
             double[] values,
-            CmykAlgorithm cmykAlgorithm,
             GamutStrategy gamutStrategy) {
         requireLength(values, source.channelCount(), source.toString());
         double[] rawRgb = switch (source) {
-            case RGB -> Arrays.copyOf(values, 3);
+            case RGB -> values.clone();
             case CMYK -> cmykToRgb(values);
-            case HSV -> hsvToRgb(values);
-            case HLS -> hlsToRgb(values);
-            case XYZ -> xyzToRgbRaw(values);
             case LAB -> xyzToRgbRaw(labToXyz(values));
         };
         return GamutMapper.map(rawRgb, gamutStrategy);
@@ -170,60 +151,6 @@ public final class ColorConverter {
         };
     }
 
-    public double[] rgbToHsv(double[] rgb) {
-        double[] normalized = normalizedRgb(rgb);
-        double r = normalized[0];
-        double g = normalized[1];
-        double b = normalized[2];
-        double max = Math.max(r, Math.max(g, b));
-        double min = Math.min(r, Math.min(g, b));
-        double delta = max - min;
-        double hue = hue(r, g, b, max, delta);
-        double saturation = max == 0.0 ? 0.0 : delta / max;
-        return new double[] {hue, saturation * 100.0, max * 100.0};
-    }
-
-    public double[] hsvToRgb(double[] hsv) {
-        requireLength(hsv, 3, "HSV");
-        double hue = normalizeHue(hsv[0]);
-        double saturation = clamp(hsv[1] / 100.0, 0.0, 1.0);
-        double value = clamp(hsv[2] / 100.0, 0.0, 1.0);
-        double chroma = value * saturation;
-        double x = chroma * (1.0 - Math.abs((hue / 60.0) % 2.0 - 1.0));
-        double m = value - chroma;
-        return addAndScale(hue, chroma, x, m);
-    }
-
-    public double[] rgbToHls(double[] rgb) {
-        double[] normalized = normalizedRgb(rgb);
-        double r = normalized[0];
-        double g = normalized[1];
-        double b = normalized[2];
-        double max = Math.max(r, Math.max(g, b));
-        double min = Math.min(r, Math.min(g, b));
-        double delta = max - min;
-        double lightness = (max + min) / 2.0;
-        double saturation = delta == 0.0
-                ? 0.0
-                : delta / (1.0 - Math.abs(2.0 * lightness - 1.0));
-        return new double[] {
-                hue(r, g, b, max, delta),
-                lightness * 100.0,
-                saturation * 100.0
-        };
-    }
-
-    public double[] hlsToRgb(double[] hls) {
-        requireLength(hls, 3, "HLS");
-        double hue = normalizeHue(hls[0]);
-        double lightness = clamp(hls[1] / 100.0, 0.0, 1.0);
-        double saturation = clamp(hls[2] / 100.0, 0.0, 1.0);
-        double chroma = (1.0 - Math.abs(2.0 * lightness - 1.0)) * saturation;
-        double x = chroma * (1.0 - Math.abs((hue / 60.0) % 2.0 - 1.0));
-        double m = lightness - chroma / 2.0;
-        return addAndScale(hue, chroma, x, m);
-    }
-
     private static Matrix3 buildRgbToXyzMatrix(Illuminant illuminant) {
         double[][] primaryValues = new double[3][3];
         for (int column = 0; column < 3; column++) {
@@ -251,51 +178,6 @@ public final class ColorConverter {
         return new Matrix3(result);
     }
 
-    private static double[] normalizedRgb(double[] rgb) {
-        requireLength(rgb, 3, "RGB");
-        return new double[] {
-                clamp(rgb[0], 0.0, 255.0) / 255.0,
-                clamp(rgb[1], 0.0, 255.0) / 255.0,
-                clamp(rgb[2], 0.0, 255.0) / 255.0
-        };
-    }
-
-    private static double hue(double r, double g, double b, double max, double delta) {
-        if (delta == 0.0) {
-            return 0.0;
-        }
-        double hue;
-        if (max == r) {
-            hue = 60.0 * (((g - b) / delta) % 6.0);
-        } else if (max == g) {
-            hue = 60.0 * ((b - r) / delta + 2.0);
-        } else {
-            hue = 60.0 * ((r - g) / delta + 4.0);
-        }
-        return hue < 0.0 ? hue + 360.0 : hue;
-    }
-
-    private static double[] addAndScale(double hue, double chroma, double x, double m) {
-        double[] rgb;
-        if (hue < 60.0) {
-            rgb = new double[] {chroma, x, 0.0};
-        } else if (hue < 120.0) {
-            rgb = new double[] {x, chroma, 0.0};
-        } else if (hue < 180.0) {
-            rgb = new double[] {0.0, chroma, x};
-        } else if (hue < 240.0) {
-            rgb = new double[] {0.0, x, chroma};
-        } else if (hue < 300.0) {
-            rgb = new double[] {x, 0.0, chroma};
-        } else {
-            rgb = new double[] {chroma, 0.0, x};
-        }
-        for (int i = 0; i < rgb.length; i++) {
-            rgb[i] = 255.0 * (rgb[i] + m);
-        }
-        return rgb;
-    }
-
     private static double decodeSrgb(double value) {
         return value <= 0.04045
                 ? value / 12.92
@@ -319,11 +201,6 @@ public final class ColorConverter {
         return value > LAB_DELTA
                 ? value * value * value
                 : 3.0 * LAB_DELTA * LAB_DELTA * (value - 4.0 / 29.0);
-    }
-
-    private static double normalizeHue(double hue) {
-        double result = hue % 360.0;
-        return result < 0.0 ? result + 360.0 : result;
     }
 
     private static double clamp(double value, double min, double max) {

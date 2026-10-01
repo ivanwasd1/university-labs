@@ -16,14 +16,6 @@ public enum Illuminant {
         this.y = y;
     }
 
-    public double x() {
-        return x;
-    }
-
-    public double y() {
-        return y;
-    }
-
     /** Возвращает Xn, Yn, Zn при Yn = 100. */
     public double[] referenceWhite() {
         return new double[] {

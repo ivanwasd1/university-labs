@@ -58,8 +58,4 @@ public final class Matrix3 {
         }
         return new Matrix3(inverse);
     }
-
-    public double get(int row, int column) {
-        return value[row][column];
-    }
 }

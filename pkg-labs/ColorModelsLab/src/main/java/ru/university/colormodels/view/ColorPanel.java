@@ -10,11 +10,9 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JColorChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -23,29 +21,21 @@ import javax.swing.JSpinner;
 import javax.swing.SpinnerNumberModel;
 
 import ru.university.colormodels.controller.ColorController;
-import ru.university.colormodels.model.ChannelSpec;
 import ru.university.colormodels.model.ColorModelType;
 
 /** Одна из трёх одинаковых панелей выбора и редактирования модели. */
 public final class ColorPanel extends JPanel {
     private final ColorController controller;
-    private final Consumer<ColorModelType> modelChangeListener;
-    private final JComboBox<ColorModelType> modelBox;
     private final JPanel channelsPanel = new JPanel(new GridBagLayout());
     private final List<ChannelControl> controls = new ArrayList<>();
-    private ColorModelType model;
+    private final ColorModelType model;
     private double[] currentValues;
     private boolean updating;
-    private boolean changingModel;
 
-    public ColorPanel(
-            ColorController controller,
-            ColorModelType initialModel,
-            Consumer<ColorModelType> modelChangeListener) {
+    public ColorPanel(ColorController controller, ColorModelType model) {
         this.controller = controller;
-        this.model = initialModel;
-        this.modelChangeListener = modelChangeListener;
-        this.currentValues = new double[initialModel.channelCount()];
+        this.model = model;
+        this.currentValues = new double[model.channelCount()];
 
         setLayout(new BorderLayout(8, 8));
         setBorder(BorderFactory.createCompoundBorder(
@@ -53,23 +43,9 @@ public final class ColorPanel extends JPanel {
                 BorderFactory.createEmptyBorder(12, 12, 12, 12)));
         setPreferredSize(new Dimension(320, 380));
 
-        JPanel header = new JPanel(new BorderLayout(8, 0));
-        JLabel title = new JLabel("Цветовая модель");
-        title.setFont(title.getFont().deriveFont(Font.BOLD));
-        modelBox = new JComboBox<>(ColorModelType.values());
-        modelBox.setSelectedItem(initialModel);
-        modelBox.setToolTipText("Выберите модель для этой панели");
-        modelBox.addActionListener(event -> {
-            if (!changingModel) {
-                ColorModelType selected = (ColorModelType) modelBox.getSelectedItem();
-                if (selected != null && selected != model) {
-                    modelChangeListener.accept(selected);
-                }
-            }
-        });
-        header.add(title, BorderLayout.WEST);
-        header.add(modelBox, BorderLayout.CENTER);
-        add(header, BorderLayout.NORTH);
+        JLabel title = new JLabel(model.toString());
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
+        add(title, BorderLayout.NORTH);
 
         add(channelsPanel, BorderLayout.CENTER);
 
@@ -85,18 +61,6 @@ public final class ColorPanel extends JPanel {
 
     public ColorModelType getModelType() {
         return model;
-    }
-
-    public void applyModel(ColorModelType newModel) {
-        changingModel = true;
-        try {
-            model = newModel;
-            modelBox.setSelectedItem(newModel);
-            currentValues = new double[newModel.channelCount()];
-            rebuildControls();
-        } finally {
-            changingModel = false;
-        }
     }
 
     public void setValues(double[] values) {
@@ -121,7 +85,7 @@ public final class ColorPanel extends JPanel {
     private void rebuildControls() {
         channelsPanel.removeAll();
         controls.clear();
-        ChannelSpec[] specs = model.channels();
+        ChannelSpec[] specs = channelsFor(model);
 
         for (int index = 0; index < specs.length; index++) {
             ChannelSpec spec = specs[index];
@@ -256,6 +220,61 @@ public final class ColorPanel extends JPanel {
 
     private static double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static ChannelSpec[] channelsFor(ColorModelType model) {
+        return switch (model) {
+            case RGB -> new ChannelSpec[] {
+                    channel("R", 0, 255, 1, 0, ""),
+                    channel("G", 0, 255, 1, 0, ""),
+                    channel("B", 0, 255, 1, 0, "")
+            };
+            case LAB -> new ChannelSpec[] {
+                    channel("L", 0, 100, 0.1, 1, ""),
+                    channel("a", -128, 127, 0.1, 1, ""),
+                    channel("b", -128, 127, 0.1, 1, "")
+            };
+            case CMYK -> new ChannelSpec[] {
+                    channel("C", 0, 100, 0.1, 1, "%"),
+                    channel("M", 0, 100, 0.1, 1, "%"),
+                    channel("Y", 0, 100, 0.1, 1, "%"),
+                    channel("K", 0, 100, 0.1, 1, "%")
+            };
+        };
+    }
+
+    private static ChannelSpec channel(
+            String name, double min, double max, double step, int decimals, String unit) {
+        return new ChannelSpec(name, min, max, step, decimals, unit);
+    }
+
+    private record ChannelSpec(
+            String name,
+            double min,
+            double max,
+            double step,
+            int decimals,
+            String unit) {
+
+        int sliderScale() {
+            return decimals == 0 ? 1 : 10;
+        }
+
+        int sliderMin() {
+            return (int) Math.round(min * sliderScale());
+        }
+
+        int sliderMax() {
+            return (int) Math.round(max * sliderScale());
+        }
+
+        int toSlider(double value) {
+            return (int) Math.round(value * sliderScale());
+        }
+
+        double fromSlider(int value) {
+            return (double) value / sliderScale();
+        }
     }
 
     private record ChannelControl(ChannelSpec spec, JSlider slider, JSpinner spinner) {
