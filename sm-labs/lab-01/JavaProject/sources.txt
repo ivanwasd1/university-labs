@@ -1,4 +1,0 @@
-src/Main.java
-src/LinearAlgebra.java
-src/GaussMethod.java
-src/SelfTest.java
