@@ -11,6 +11,7 @@ public class Main {
     private static void run() {
 
         int matrix[][] = fillMatrixWithRandomInts();
+        printMatrix(matrix);
         sortMatrixByColumnCharacteristic(matrix);
         printMatrix(matrix);
     }
