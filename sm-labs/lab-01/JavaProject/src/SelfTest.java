@@ -26,26 +26,25 @@ public class SelfTest {
             for (int j = 0; j < a.length; j++) b[i] += a[i][j] * expected[j];
         double[][] saved = LinearAlgebra.copy(a);
         double[] savedB = b.clone();
-        var g = DirectMethods.gauss(a, LinearAlgebra.column(b));
-        var h = DirectMethods.householder(a, LinearAlgebra.column(b));
-        require(LinearAlgebra.distance(LinearAlgebra.column(g.solution(), 0), expected) < 1e-10);
-        require(LinearAlgebra.distance(LinearAlgebra.column(h.solution(), 0), expected) < 1e-10);
-        for (boolean seidel : new boolean[]{false, true}) {
-            var result = IterativeMethods.solve(a, b, seidel, 1e-11, 10000);
-            require(LinearAlgebra.distance(result.x(), expected) < 1e-9);
-            require(result.history().get(result.history().size() - 1).difference() <= 1e-11);
-            if (result.history().size() > 1)
-                require(result.history().get(result.history().size() - 2).difference() > 1e-11);
-        }
-        var inverse = DirectMethods.gauss(a, LinearAlgebra.identity(a.length)).solution();
-        require(LinearAlgebra.norm(LinearAlgebra.inverseResidual(inverse, a)) < 1e-12);
+        var result = GaussMethod.solve(a, b);
+        require(LinearAlgebra.distance(result.x(), expected) < 1e-10);
+        require(LinearAlgebra.norm(LinearAlgebra.inverseResidual(result.inverse(), a)) < 1e-12);
         require(Arrays.deepEquals(a, saved) && Arrays.equals(b, savedB));
     }
 
     public static void run() {
         passed = 0;
         check("Система 1 x 1", () -> known(new double[][]{{2}}, new double[]{3}));
-        check("Система 2 x 2", () -> known(new double[][]{{4, 1}, {2, 3}}, new double[]{1, 2}));
+        check("Система 2 x 2, определитель и обратная матрица", () -> {
+            double[][] a = {{4, 1}, {2, 3}};
+            known(a, new double[]{1, 2});
+            var r = GaussMethod.solve(a, new double[]{6, 8});
+            double[][] expected = {{0.3, -0.1}, {-0.2, 0.4}};
+            for (int i = 0; i < 2; i++)
+                require(LinearAlgebra.distance(r.inverse()[i], expected[i]) < 1e-14);
+            require(r.determinant() == 10);
+            require(Math.abs(LinearAlgebra.norm(a) * LinearAlgebra.norm(r.inverse()) - 3) < 1e-14);
+        });
         check("Единичная матрица", () -> known(LinearAlgebra.identity(3), new double[]{1, -2, 3}));
         check("Нулевая правая часть", () -> known(new double[][]{{3, 1}, {1, 4}}, new double[2]));
         check("Отрицательная диагональ", () -> known(new double[][]{{-4, 1}, {2, -5}}, new double[]{-1, 3}));
@@ -68,31 +67,36 @@ public class SelfTest {
             }
         });
         var data = Main.variant12();
-        check("СЛАУ-12 и число итераций", () -> {
-            require(IterativeMethods.solve(data.a(), data.b(), false, 1e-5, 10000).history().size() == 13);
-            require(IterativeMethods.solve(data.a(), data.b(), true, 1e-5, 10000).history().size() == 7);
-            var g = DirectMethods.gauss(data.a(), LinearAlgebra.column(data.b()));
-            require(LinearAlgebra.norm(LinearAlgebra.residual(data.a(), LinearAlgebra.column(g.solution(), 0), data.b())) < 1e-13);
+        check("СЛАУ-12 и независимые контрольные значения", () -> {
+            var r = GaussMethod.solve(data.a(), data.b());
+            double[] exact = {7.001180468429265, 3.9999353339611235,
+                    -6.000272407191209, 2.9998566791649315, -2.000716438735775};
+            require(LinearAlgebra.distance(r.x(), exact) < 1e-12);
+            require(Math.abs(r.determinant() - 0.2099905732078905044) < 1e-14);
+            double condition = LinearAlgebra.norm(data.a()) * LinearAlgebra.norm(r.inverse());
+            require(Math.abs(condition - 3.484210189385931) < 1e-12);
+            require(LinearAlgebra.norm(LinearAlgebra.inverseResidual(r.inverse(), data.a())) < 1e-13);
         });
-        check("Вырожденная матрица", () -> {
-            double[][] a = {{1, 2}, {2, 4}}, rhs = {{1}, {2}};
-            fails(() -> DirectMethods.gauss(a, rhs));
-            fails(() -> DirectMethods.householder(a, rhs));
+        check("Вырожденная матрица", () -> fails(() ->
+                GaussMethod.solve(new double[][]{{1, 2}, {2, 4}}, new double[]{1, 2})));
+        check("Нулевой ведущий элемент невырожденной матрицы", () -> fails(() ->
+                GaussMethod.solve(new double[][]{{0, 1}, {1, 0}}, new double[]{2, 1})));
+        check("Слишком малый ведущий элемент", () -> fails(() ->
+                GaussMethod.solve(new double[][]{{1e-18, 1}, {1, 1}}, new double[]{1, 2})));
+        check("Норма матрицы и максимум элемента", () -> {
+            double[][] a = {{0.1, -0.2}, {0.15, 0}};
+            require(Math.abs(LinearAlgebra.norm(a) - 0.3) < 1e-14);
+            require(LinearAlgebra.maxElement(a) == 0.2);
         });
-        check("Нулевой ведущий элемент невырожденной матрицы", () -> {
-            double[][] a = {{0, 1}, {1, 0}}, rhs = {{2}, {1}};
-            fails(() -> DirectMethods.gauss(a, rhs));
-            var h = DirectMethods.householder(a, rhs);
-            require(LinearAlgebra.distance(LinearAlgebra.column(h.solution(), 0), new double[]{1, 2}) < 1e-12);
-            fails(() -> IterativeMethods.solve(a, new double[]{2, 1}, false, 1e-5, 100));
+        check("Диапазон представления определителя", () -> {
+            for (double value : new double[]{1e200, 1e-200})
+                fails(() -> GaussMethod.solve(new double[][]{{value, 0}, {0, value}}, new double[]{0, 0}));
         });
-        check("Ограничение числа итераций", () -> fails(() -> IterativeMethods.solve(data.a(), data.b(), false, 1e-5, 1)));
-        check("Расходящиеся итерации", () -> fails(() -> IterativeMethods.solve(new double[][]{{1, 2}, {2, 1}}, new double[]{1, 1}, false, 1e-5, 20)));
-        check("Некорректная точность", () -> {
-            for (double eps : new double[]{0, -1, Double.NaN, Double.POSITIVE_INFINITY})
-                fails(() -> IterativeMethods.solve(data.a(), data.b(), false, eps, 10));
+        check("Размеры матрицы", () -> {
+            fails(() -> GaussMethod.solve(new double[0][0], new double[0]));
+            fails(() -> GaussMethod.solve(new double[][]{{1, 2}}, new double[]{1}));
+            fails(() -> GaussMethod.solve(new double[][]{{1}}, new double[2]));
         });
-        check("Размеры матрицы", () -> fails(() -> LinearAlgebra.validate(new double[][]{{1, 2}}, new double[]{1})));
         check("NaN и бесконечность", () -> {
             fails(() -> LinearAlgebra.validate(new double[][]{{Double.NaN}}, new double[]{1}));
             fails(() -> LinearAlgebra.validate(new double[][]{{1}}, new double[]{Double.POSITIVE_INFINITY}));

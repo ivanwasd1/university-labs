@@ -1,7 +1,7 @@
 {
   "version": "0.2.0",
   "configurations": [
-    {"type": "java", "name": "СЛАУ 12", "request": "launch", "mainClass": "Main", "cwd": "${workspaceFolder}", "console": "integratedTerminal"},
+    {"type": "java", "name": "СЛАУ 12 пункт а", "request": "launch", "mainClass": "Main", "cwd": "${workspaceFolder}", "console": "integratedTerminal"},
     {"type": "java", "name": "Проверки", "request": "launch", "mainClass": "Main", "args": "--test", "cwd": "${workspaceFolder}", "console": "integratedTerminal"}
   ]
 }
