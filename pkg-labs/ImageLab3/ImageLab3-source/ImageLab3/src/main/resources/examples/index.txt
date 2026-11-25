@@ -1,0 +1,10 @@
+gaussian-noise.png|Гауссов шум
+impulse-noise.png|Импульсный шум
+sharp-edges.png|Тонкие линии и резкая граница
+color.png|Цветная сцена с шумом
+islands.png|Мелкие светлые объекты
+defects.png|Отверстия и разрывы
+bright-details.png|Светлые детали на градиенте
+dark-details.png|Тёмные детали на градиенте
+reference.png|Чистый эталон
+matrix.png|Контрольная матрица 3 × 3
