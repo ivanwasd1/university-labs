@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="quadrilaterals">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/build/quadrilaterals.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
